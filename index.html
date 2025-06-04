@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple 'か' Text Plane</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a202c;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center h-screen">
+    <canvas id="glCanvas"></canvas>
+    <div class="info">
+        <p>3D Rounded 'か' Block (Orthogonal)</p>
+        <p>Drag to rotate object • Scroll to zoom</p>
+        <p>Middle-click to reset view</p>
+    </div>
+
+    <script id="vertex-shader-3d" type="x-shader/x-vertex">
+        attribute vec3 a_vertexPosition;
+        attribute vec2 a_textureCoord;
+        uniform mat4 u_modelViewMatrix;
+        uniform mat4 u_projectionMatrix;
+        varying vec2 v_textureCoord;
+        void main() {
+            v_textureCoord = a_textureCoord;
+            gl_Position = u_projectionMatrix * u_modelViewMatrix * vec4(a_vertexPosition, 1.0);
+        }
+    </script>
+
+    <script id="fragment-shader-3d" type="x-shader/x-fragment">
+        precision mediump float;
+        uniform sampler2D u_textTexture;
+        uniform bool u_useTexture;
+        uniform vec4 u_solidColor;
+        varying vec2 v_textureCoord;
+        void main() {
+            if (u_useTexture) {
+                vec4 textColor = texture2D(u_textTexture, v_textureCoord);
+                gl_FragColor = textColor;
+            } else {
+                gl_FragColor = u_solidColor;
+            }
+        }
+    </script>
+
+    <script>
+        // Simple matrix operations
+        const mat4 = {
+            create: function () { return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); },
+            identity: function (out) { out.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); return out; },
+            multiply: function (out, a, b) {
+                let a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+                let a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+                let a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+                let a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+
+                let b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+                out[0] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+                out[1] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+                out[2] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+                out[3] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+
+                b0 = b[4]; b1 = b[5]; b2 = b[6]; b3 = b[7];
+                out[4] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+                out[5] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+                out[6] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+                out[7] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+
+                b0 = b[8]; b1 = b[9]; b2 = b[10]; b3 = b[11];
+                out[8] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+                out[9] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+                out[10] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+                out[11] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+
+                b0 = b[12]; b1 = b[13]; b2 = b[14]; b3 = b[15];
+                out[12] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+                out[13] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+                out[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+                out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+                return out;
+            },
+            perspective: function (out, fovy, aspect, near, far) {
+                const f = 1.0 / Math.tan(fovy / 2);
+                out[0] = f / aspect; out[1] = 0; out[2] = 0; out[3] = 0;
+                out[4] = 0; out[5] = f; out[6] = 0; out[7] = 0;
+                out[8] = 0; out[9] = 0; out[11] = -1; out[15] = 0;
+                if (far != null && far !== Infinity) {
+                    const nf = 1 / (near - far);
+                    out[10] = (far + near) * nf;
+                    out[14] = (2 * far * near) * nf;
+                } else {
+                    out[10] = -1; out[14] = -2 * near;
+                }
+                return out;
+            },
+            translate: function (out, a, v) {
+                let x = v[0], y = v[1], z = v[2];
+                out[12] = a[0] * x + a[4] * y + a[8] * z + a[12];
+                out[13] = a[1] * x + a[5] * y + a[9] * z + a[13];
+                out[14] = a[2] * x + a[6] * y + a[10] * z + a[14];
+                out[15] = a[3] * x + a[7] * y + a[11] * z + a[15];
+                return out;
+            },
+            rotateX: function (out, a, rad) {
+                const s = Math.sin(rad), c = Math.cos(rad);
+                const a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+                const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+                out[0] = a[0]; out[1] = a[1]; out[2] = a[2]; out[3] = a[3];
+                out[4] = a10 * c + a20 * s; out[5] = a11 * c + a21 * s; out[6] = a12 * c + a22 * s; out[7] = a13 * c + a23 * s;
+                out[8] = a20 * c - a10 * s; out[9] = a21 * c - a11 * s; out[10] = a22 * c - a12 * s; out[11] = a23 * c - a13 * s;
+                out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
+                return out;
+            },
+            rotateY: function (out, a, rad) {
+                const s = Math.sin(rad), c = Math.cos(rad);
+                const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+                const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+                out[0] = a00 * c - a20 * s; out[1] = a01; out[2] = a02; out[3] = a03;
+                out[4] = a[4]; out[5] = a[5]; out[6] = a[6]; out[7] = a[7];
+                out[8] = a00 * s + a20 * c; out[9] = a21; out[10] = a22; out[11] = a23;
+                out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
+                return out;
+            },
+            rotateZ: function (out, a, rad) {
+                const s = Math.sin(rad), c = Math.cos(rad);
+                const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
+                const a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+                out[0] = a00 * c + a10 * s; out[1] = a01 * c + a11 * s; out[2] = a02; out[3] = a03;
+                out[4] = a10 * c - a00 * s; out[5] = a11 * c - a01 * s; out[6] = a12; out[7] = a13;
+                out[8] = a[8]; out[9] = a[9]; out[10] = a[10]; out[11] = a[11];
+                out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
+                return out;
+            }
+        };
+
+        let gl;
+        let shaderProgram;
+        let textPlaneBuffer;
+        let textPlaneIndexBuffer;
+        let texCoordBuffer;
+        let textTextures = []; // Array to hold multiple textures
+        let wireframeBuffer; // Buffer for wireframe edges
+
+        let projectionMatrix;
+        let modelViewMatrix;
+        let time = 0;
+
+        // Mouse interaction variables
+        let lastMouseX = null;
+        let lastMouseY = null;
+        let mouseDown = false;
+        let rotationX = 0;
+        let rotationY = 0;
+        let zoom = 7.0; // Scale factor for orthogonal view
+
+        // Swing animation variables
+        const swingAmplitudeAngle = Math.PI / 6; // Max swing angle (30 degrees)
+        const swingFrequency = 0.03; // How fast it swings
+
+        function initWebGL() {
+            const canvas = document.getElementById("glCanvas");
+            gl = canvas.getContext("webgl");
+            if (!gl) { alert("WebGL not supported"); return false; }
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            return true;
+        }
+
+        function initShaders() {
+            const vertexShaderSource = document.getElementById("vertex-shader-3d").text;
+            const fragmentShaderSource = document.getElementById("fragment-shader-3d").text;
+            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+            shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vertexShader);
+            gl.attachShader(shaderProgram, fragmentShader);
+            gl.linkProgram(shaderProgram);
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                console.error("Shader link error: " + gl.getProgramInfoLog(shaderProgram));
+                return false;
+            }
+            return true;
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error("Shader compile error: " + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createTextTexture() {
+            console.log('Creating text textures...');
+
+            // Array of hiragana characters for each object
+            const characters = ['か', 'き', 'く', 'け', 'こ'];
+
+            for (let i = 0; i < characters.length; i++) {
+                // Create a canvas for text rendering
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+
+                // Clear with transparent background
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Set up text properties
+                ctx.font = 'bold 300px serif';
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Add text shadow
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetX = 4;
+                ctx.shadowOffsetY = 4;
+
+                // Draw the specific hiragana character
+                ctx.fillText(characters[i], canvas.width / 2, canvas.height / 2);
+
+                console.log(`Text ${characters[i]} drawn to canvas`);
+
+                // Create WebGL texture from canvas
+                const texture = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+
+                // Set texture parameters
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+                // Add to textures array
+                textTextures.push(texture);
+            }
+
+            console.log('All textures created successfully');
+        }
+
+        function createTextPlane() {
+            // Create a 3D extruded plane with fully rounded edges (like a rounded rectangle/pill shape)
+            const size = 2.0;
+            const thickness = 0.3;
+            const halfThickness = thickness / 2;
+            const cornerRadius = 0.4; // Larger radius for more rounded appearance
+            const segments = 32; // More segments for smooth curves
+
+            const vertices = [];
+            const frontTexCoords = [];
+
+            // Create a rounded rectangle that's more like a "pill" or "stadium" shape
+            function createRoundedPillShape() {
+                const halfW = size / 2, halfH = size / 2;
+                const frontVertices = [];
+
+                // Add center vertex
+                frontVertices.push(0, 0, halfThickness);
+                frontTexCoords.push(0.5, 0.5);
+
+                // Create rounded rectangle by connecting curved sections
+                const totalSegments = segments;
+
+                for (let i = 0; i <= totalSegments; i++) {
+                    const t = (i / totalSegments) * Math.PI * 2; // Full circle parameter
+
+                    let x, y;
+
+                    // Create rounded rectangle shape
+                    if (t >= 0 && t < Math.PI / 2) {
+                        // Top-right quadrant
+                        const localT = t / (Math.PI / 2);
+                        const cornerX = halfW - cornerRadius;
+                        const cornerY = halfH - cornerRadius;
+                        x = cornerX + cornerRadius * Math.cos(t);
+                        y = cornerY + cornerRadius * Math.sin(t);
+                    }
+                    else if (t >= Math.PI / 2 && t < Math.PI) {
+                        // Top-left quadrant  
+                        const localT = (t - Math.PI / 2) / (Math.PI / 2);
+                        const cornerX = -halfW + cornerRadius;
+                        const cornerY = halfH - cornerRadius;
+                        x = cornerX + cornerRadius * Math.cos(t);
+                        y = cornerY + cornerRadius * Math.sin(t);
+                    }
+                    else if (t >= Math.PI && t < 3 * Math.PI / 2) {
+                        // Bottom-left quadrant
+                        const localT = (t - Math.PI) / (Math.PI / 2);
+                        const cornerX = -halfW + cornerRadius;
+                        const cornerY = -halfH + cornerRadius;
+                        x = cornerX + cornerRadius * Math.cos(t);
+                        y = cornerY + cornerRadius * Math.sin(t);
+                    }
+                    else {
+                        // Bottom-right quadrant
+                        const localT = (t - 3 * Math.PI / 2) / (Math.PI / 2);
+                        const cornerX = halfW - cornerRadius;
+                        const cornerY = -halfH + cornerRadius;
+                        x = cornerX + cornerRadius * Math.cos(t);
+                        y = cornerY + cornerRadius * Math.sin(t);
+                    }
+
+                    frontVertices.push(x, y, halfThickness);
+
+                    // UV mapping
+                    const u = (x + halfW) / size;
+                    const v = 1.0 - (y + halfH) / size;
+                    frontTexCoords.push(u, v);
+                }
+
+                return frontVertices;
+            }
+
+            // Create the rounded shape
+            const frontVertices = createRoundedPillShape();
+            vertices.push(...frontVertices);
+
+            // Create back face
+            const backStartIndex = frontVertices.length / 3;
+            for (let i = 0; i < frontVertices.length; i += 3) {
+                vertices.push(frontVertices[i], frontVertices[i + 1], -halfThickness);
+            }
+
+            textPlaneBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, textPlaneBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            texCoordBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(frontTexCoords), gl.STATIC_DRAW);
+
+            const outlineVertexCount = frontVertices.length / 3 - 1; // Exclude center
+
+            // Create indices for front face
+            const frontFaceIndices = [];
+            for (let i = 1; i <= outlineVertexCount; i++) {
+                const next = (i % outlineVertexCount) + 1;
+                frontFaceIndices.push(0, i, next);
+            }
+
+            // Create indices for other faces
+            const otherFacesIndices = [];
+
+            // Back face
+            const backCenterIdx = backStartIndex;
+            for (let i = 1; i <= outlineVertexCount; i++) {
+                const next = (i % outlineVertexCount) + 1;
+                const backIdx = backStartIndex + i;
+                const backNextIdx = backStartIndex + next;
+                otherFacesIndices.push(backCenterIdx, backNextIdx, backIdx);
+            }
+
+            // Side faces
+            for (let i = 1; i <= outlineVertexCount; i++) {
+                const next = (i % outlineVertexCount) + 1;
+                const frontCurrent = i;
+                const frontNext = next;
+                const backCurrent = backStartIndex + i;
+                const backNext = backStartIndex + next;
+
+                otherFacesIndices.push(frontCurrent, backCurrent, frontNext);
+                otherFacesIndices.push(frontNext, backCurrent, backNext);
+            }
+
+            textPlaneIndexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, textPlaneIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(frontFaceIndices), gl.STATIC_DRAW);
+
+            window.otherFacesIndexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, window.otherFacesIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(otherFacesIndices), gl.STATIC_DRAW);
+
+            window.frontFaceCount = frontFaceIndices.length;
+            window.otherFacesCount = otherFacesIndices.length;
+
+            // Create wireframe that shows the smooth rounded shape
+            const wireframeVertices = [];
+
+            // Front face outline - smooth continuous curve
+            for (let i = 1; i <= outlineVertexCount; i++) {
+                const next = (i % outlineVertexCount) + 1;
+                const currentIdx = i * 3;
+                const nextIdx = next * 3;
+                wireframeVertices.push(
+                    frontVertices[currentIdx], frontVertices[currentIdx + 1], frontVertices[currentIdx + 2],
+                    frontVertices[nextIdx], frontVertices[nextIdx + 1], frontVertices[nextIdx + 2]
+                );
+            }
+
+            // Back face outline - matching smooth curve
+            for (let i = 1; i <= outlineVertexCount; i++) {
+                const next = (i % outlineVertexCount) + 1;
+                const currentIdx = i * 3;
+                const nextIdx = next * 3;
+                wireframeVertices.push(
+                    frontVertices[currentIdx], frontVertices[currentIdx + 1], -halfThickness,
+                    frontVertices[nextIdx], frontVertices[nextIdx + 1], -halfThickness
+                );
+            }
+
+            // Connecting edges - every 8th vertex to show 3D structure
+            const connectionStep = Math.floor(outlineVertexCount / 8);
+            for (let i = 1; i <= outlineVertexCount; i += connectionStep) {
+                const idx = i * 3;
+                wireframeVertices.push(
+                    frontVertices[idx], frontVertices[idx + 1], halfThickness,
+                    frontVertices[idx], frontVertices[idx + 1], -halfThickness
+                );
+            }
+
+            wireframeBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, wireframeBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(wireframeVertices), gl.STATIC_DRAW);
+
+            window.wireframeCount = wireframeVertices.length / 3;
+
+            console.log('Fully rounded pill-shaped geometry created');
+        }
+
+        function initMatrices() {
+            projectionMatrix = mat4.create();
+            updateProjectionMatrix();
+            updateCameraMatrix();
+        }
+
+        function updateProjectionMatrix() {
+            const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+            const size = zoom; // Orthogonal view size
+
+            // Create orthogonal projection manually
+            const left = -size * aspect;
+            const right = size * aspect;
+            const bottom = -size;
+            const top = size;
+            const near = -10;
+            const far = 10;
+
+            // Orthogonal projection matrix
+            projectionMatrix[0] = 2 / (right - left);
+            projectionMatrix[1] = 0;
+            projectionMatrix[2] = 0;
+            projectionMatrix[3] = 0;
+
+            projectionMatrix[4] = 0;
+            projectionMatrix[5] = 2 / (top - bottom);
+            projectionMatrix[6] = 0;
+            projectionMatrix[7] = 0;
+
+            projectionMatrix[8] = 0;
+            projectionMatrix[9] = 0;
+            projectionMatrix[10] = -2 / (far - near);
+            projectionMatrix[11] = 0;
+
+            projectionMatrix[12] = -(right + left) / (right - left);
+            projectionMatrix[13] = -(top + bottom) / (top - bottom);
+            projectionMatrix[14] = -(far + near) / (far - near);
+            projectionMatrix[15] = 1;
+        }
+
+        function setupMouseControls() {
+            const canvas = document.getElementById("glCanvas");
+
+            canvas.onmousedown = (event) => {
+                mouseDown = true;
+                lastMouseX = event.clientX;
+                lastMouseY = event.clientY;
+            };
+
+            document.onmouseup = () => {
+                mouseDown = false;
+            };
+
+            document.onmousemove = (event) => {
+                if (!mouseDown) return;
+
+                const newX = event.clientX;
+                const newY = event.clientY;
+                const deltaX = newX - lastMouseX;
+                const deltaY = newY - lastMouseY;
+
+                // Much higher sensitivity for responsive control
+                const sensitivity = 0.01;
+                rotationY += deltaX * sensitivity; // Horizontal mouse = Y rotation
+                rotationX += deltaY * sensitivity; // Vertical mouse = X rotation
+
+                // Keep vertical rotation reasonable but not too limited
+                rotationX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, rotationX));
+
+                lastMouseX = newX;
+                lastMouseY = newY;
+            };
+
+            // Mouse wheel for zoom - adjust orthogonal scale
+            canvas.onwheel = (event) => {
+                event.preventDefault();
+                const zoomSpeed = 0.1;
+                zoom += event.deltaY * zoomSpeed * 0.01;
+                zoom = Math.max(0.5, Math.min(10, zoom)); // Limit zoom range
+                updateProjectionMatrix(); // Update the orthogonal projection
+            };
+
+            // Middle mouse button to reset view
+            canvas.onmousedown = (event) => {
+                if (event.button === 1) { // Middle mouse button
+                    event.preventDefault();
+                    resetView();
+                    return;
+                }
+
+                // Left mouse button for rotation
+                if (event.button === 0) {
+                    mouseDown = true;
+                    lastMouseX = event.clientX;
+                    lastMouseY = event.clientY;
+                }
+            };
+
+            // Also handle auxclick for middle mouse button (more reliable)
+            canvas.onauxclick = (event) => {
+                if (event.button === 1) { // Middle mouse button
+                    event.preventDefault();
+                    resetView();
+                }
+            };
+        }
+
+        function resetView() {
+            // Reset to initial view state
+            rotationX = 0;
+            rotationY = 0;
+            zoom = 7.0;
+            updateProjectionMatrix(); // Update orthogonal projection
+            console.log('View reset to initial state');
+        }
+
+        function updateCameraMatrix() {
+            modelViewMatrix = mat4.create();
+
+            // Object rotation around its center (orthogonal view - no translation needed)
+            mat4.rotateX(modelViewMatrix, modelViewMatrix, rotationX);
+            mat4.rotateY(modelViewMatrix, modelViewMatrix, rotationY);
+        }
+
+        function createSwingMatrix(time, objectIndex) {
+            // Calculate current rotation angle around Y-axis with individual phase offset
+            const phaseOffset = objectIndex * Math.PI / 2.5; // Different phase for each object
+            const currentSwingAngle = swingAmplitudeAngle * Math.sin(swingFrequency * time * 100 + phaseOffset);
+
+            // Create rotation matrix around Y-axis (vertical axis)
+            const swingMatrix = mat4.create();
+            mat4.rotateY(swingMatrix, swingMatrix, currentSwingAngle);
+
+            return swingMatrix;
+        }
+
+        function handleWindowResize() {
+            const canvas = document.getElementById("glCanvas");
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            updateProjectionMatrix(); // Update orthogonal projection for new aspect ratio
+        }
+
+        function drawScene() {
+            time += 0.01;
+
+            gl.clearColor(0.1, 0.125, 0.176, 1.0);
+            gl.clearDepth(1.0);
+            gl.enable(gl.DEPTH_TEST);
+            gl.depthFunc(gl.LEQUAL);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+            // Enable blending for transparency
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+            gl.useProgram(shaderProgram);
+
+            // Update base camera matrix
+            updateCameraMatrix();
+
+            // Get uniform and attribute locations
+            const projectionMatrixLocation = gl.getUniformLocation(shaderProgram, "u_projectionMatrix");
+            const modelViewMatrixLocation = gl.getUniformLocation(shaderProgram, "u_modelViewMatrix");
+            const textTextureLocation = gl.getUniformLocation(shaderProgram, "u_textTexture");
+            const useTextureLocation = gl.getUniformLocation(shaderProgram, "u_useTexture");
+            const solidColorLocation = gl.getUniformLocation(shaderProgram, "u_solidColor");
+            const positionAttributeLocation = gl.getAttribLocation(shaderProgram, "a_vertexPosition");
+            const texCoordAttributeLocation = gl.getAttribLocation(shaderProgram, "a_textureCoord");
+
+            // Set projection matrix (same for all objects)
+            gl.uniformMatrix4fv(projectionMatrixLocation, false, projectionMatrix);
+
+            // Draw 5 copies of the object lined up horizontally
+            const spacing = 2.8; // Distance between objects
+            const startOffset = -2 * spacing; // Start position for 5 objects centered
+
+            for (let i = 0; i < 5; i++) {
+                // Create individual transform matrix for each object
+                const objectMatrix = mat4.create();
+
+                // Apply base rotation
+                mat4.multiply(objectMatrix, objectMatrix, modelViewMatrix);
+
+                // Translate to position in line FIRST
+                const xOffset = startOffset + i * spacing;
+                mat4.translate(objectMatrix, objectMatrix, [xOffset, 0, 0]);
+
+                // Then apply individual swing animation around the object's own center
+                const swingMatrix = createSwingMatrix(time, i);
+                mat4.multiply(objectMatrix, objectMatrix, swingMatrix);
+
+                // Set the model-view matrix for this object
+                gl.uniformMatrix4fv(modelViewMatrixLocation, false, objectMatrix);
+
+                // === DRAW FRONT FACE WITH TEXTURE ===
+                gl.uniform1i(useTextureLocation, 1); // Enable texture
+
+                // Bind the specific texture for this object
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, textTextures[i]);
+                gl.uniform1i(textTextureLocation, 0);
+
+                // Bind vertex positions
+                gl.bindBuffer(gl.ARRAY_BUFFER, textPlaneBuffer);
+                gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(positionAttributeLocation);
+
+                // Bind texture coordinates
+                gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+                gl.vertexAttribPointer(texCoordAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(texCoordAttributeLocation);
+
+                // Draw front face with texture
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, textPlaneIndexBuffer);
+                gl.drawElements(gl.TRIANGLES, window.frontFaceCount, gl.UNSIGNED_SHORT, 0);
+
+                // === DRAW OTHER FACES WITH SOLID COLOR ===
+                gl.uniform1i(useTextureLocation, 0); // Disable texture
+                gl.uniform4f(solidColorLocation, 0.4, 0.4, 0.5, 1.0); // Dark blue-grey color
+
+                // Disable texture coordinate attribute for solid faces
+                gl.disableVertexAttribArray(texCoordAttributeLocation);
+
+                // Draw other faces with solid color
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, window.otherFacesIndexBuffer);
+                gl.drawElements(gl.TRIANGLES, window.otherFacesCount, gl.UNSIGNED_SHORT, 0);
+
+                // === DRAW WIREFRAME OUTLINE ===
+                gl.uniform1i(useTextureLocation, 0); // Disable texture
+                gl.uniform4f(solidColorLocation, 1.0, 1.0, 1.0, 1.0); // White wireframe
+
+                // Disable texture coordinate attribute for wireframe
+                gl.disableVertexAttribArray(texCoordAttributeLocation);
+
+                // Bind wireframe vertices
+                gl.bindBuffer(gl.ARRAY_BUFFER, wireframeBuffer);
+                gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(positionAttributeLocation);
+
+                // Draw wireframe as lines
+                gl.drawArrays(gl.LINES, 0, window.wireframeCount);
+            }
+
+            gl.disable(gl.BLEND);
+
+            requestAnimationFrame(drawScene);
+        }
+
+        function main() {
+            if (!initWebGL()) return;
+            if (!initShaders()) return;
+            createTextTexture();
+            createTextPlane();
+            initMatrices();
+            setupMouseControls();
+            window.addEventListener('resize', handleWindowResize);
+            requestAnimationFrame(drawScene);
+        }
+
+        document.addEventListener('DOMContentLoaded', main);
+    </script>
+</body>
+
+</html>
