@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple 'か' Text Plane</title>
+    <title>Hiragana Quiz GL - OOP</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -41,8 +41,8 @@
 <body class="flex items-center justify-center h-screen">
     <canvas id="glCanvas"></canvas>
     <div class="info">
-        <p>3D Rounded 'か' Block (Orthogonal)</p>
-        <p>Drag to rotate object • Scroll to zoom</p>
+        <p>3D Hiragana Learning Game (OOP)</p>
+        <p>Drag to rotate • Scroll to zoom</p>
         <p>Middle-click to reset view</p>
     </div>
 
@@ -75,11 +75,26 @@
     </script>
 
     <script>
-        // Simple matrix operations
-        const mat4 = {
-            create: function () { return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); },
-            identity: function (out) { out.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); return out; },
-            multiply: function (out, a, b) {
+        // ===============================
+        // UTILITY CLASSES
+        // ===============================
+
+        class Mat4 {
+            static create() {
+                return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+            }
+
+            static identity(out) {
+                out.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+                return out;
+            }
+
+            static copy(out, a) {
+                out.set(a);
+                return out;
+            }
+
+            static multiply(out, a, b) {
                 let a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
                 let a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
                 let a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
@@ -109,30 +124,18 @@
                 out[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
                 out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
                 return out;
-            },
-            perspective: function (out, fovy, aspect, near, far) {
-                const f = 1.0 / Math.tan(fovy / 2);
-                out[0] = f / aspect; out[1] = 0; out[2] = 0; out[3] = 0;
-                out[4] = 0; out[5] = f; out[6] = 0; out[7] = 0;
-                out[8] = 0; out[9] = 0; out[11] = -1; out[15] = 0;
-                if (far != null && far !== Infinity) {
-                    const nf = 1 / (near - far);
-                    out[10] = (far + near) * nf;
-                    out[14] = (2 * far * near) * nf;
-                } else {
-                    out[10] = -1; out[14] = -2 * near;
-                }
-                return out;
-            },
-            translate: function (out, a, v) {
+            }
+
+            static translate(out, a, v) {
                 let x = v[0], y = v[1], z = v[2];
                 out[12] = a[0] * x + a[4] * y + a[8] * z + a[12];
                 out[13] = a[1] * x + a[5] * y + a[9] * z + a[13];
                 out[14] = a[2] * x + a[6] * y + a[10] * z + a[14];
                 out[15] = a[3] * x + a[7] * y + a[11] * z + a[15];
                 return out;
-            },
-            rotateX: function (out, a, rad) {
+            }
+
+            static rotateX(out, a, rad) {
                 const s = Math.sin(rad), c = Math.cos(rad);
                 const a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
                 const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
@@ -141,8 +144,9 @@
                 out[8] = a20 * c - a10 * s; out[9] = a21 * c - a11 * s; out[10] = a22 * c - a12 * s; out[11] = a23 * c - a13 * s;
                 out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
                 return out;
-            },
-            rotateY: function (out, a, rad) {
+            }
+
+            static rotateY(out, a, rad) {
                 const s = Math.sin(rad), c = Math.cos(rad);
                 const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
                 const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
@@ -151,573 +155,748 @@
                 out[8] = a00 * s + a20 * c; out[9] = a21; out[10] = a22; out[11] = a23;
                 out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
                 return out;
-            },
-            rotateZ: function (out, a, rad) {
-                const s = Math.sin(rad), c = Math.cos(rad);
-                const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
-                const a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
-                out[0] = a00 * c + a10 * s; out[1] = a01 * c + a11 * s; out[2] = a02; out[3] = a03;
-                out[4] = a10 * c - a00 * s; out[5] = a11 * c - a01 * s; out[6] = a12; out[7] = a13;
-                out[8] = a[8]; out[9] = a[9]; out[10] = a[10]; out[11] = a[11];
-                out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
+            }
+
+            static orthogonal(out, left, right, bottom, top, near, far) {
+                out[0] = 2 / (right - left);
+                out[1] = 0;
+                out[2] = 0;
+                out[3] = 0;
+                out[4] = 0;
+                out[5] = 2 / (top - bottom);
+                out[6] = 0;
+                out[7] = 0;
+                out[8] = 0;
+                out[9] = 0;
+                out[10] = -2 / (far - near);
+                out[11] = 0;
+                out[12] = -(right + left) / (right - left);
+                out[13] = -(top + bottom) / (top - bottom);
+                out[14] = -(far + near) / (far - near);
+                out[15] = 1;
                 return out;
             }
-        };
-
-        let gl;
-        let shaderProgram;
-        let textPlaneBuffer;
-        let textPlaneIndexBuffer;
-        let texCoordBuffer;
-        let textTextures = []; // Array to hold multiple textures
-        let wireframeBuffer; // Buffer for wireframe edges
-
-        let projectionMatrix;
-        let modelViewMatrix;
-        let time = 0;
-
-        // Mouse interaction variables
-        let lastMouseX = null;
-        let lastMouseY = null;
-        let mouseDown = false;
-        let rotationX = 0;
-        let rotationY = 0;
-        let zoom = 7.0; // Scale factor for orthogonal view
-
-        // Swing animation variables
-        const swingAmplitudeAngle = Math.PI / 6; // Max swing angle (30 degrees)
-        const swingFrequency = 0.03; // How fast it swings
-
-        function initWebGL() {
-            const canvas = document.getElementById("glCanvas");
-            gl = canvas.getContext("webgl");
-            if (!gl) { alert("WebGL not supported"); return false; }
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-            return true;
         }
 
-        function initShaders() {
-            const vertexShaderSource = document.getElementById("vertex-shader-3d").text;
-            const fragmentShaderSource = document.getElementById("fragment-shader-3d").text;
-            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
-            shaderProgram = gl.createProgram();
-            gl.attachShader(shaderProgram, vertexShader);
-            gl.attachShader(shaderProgram, fragmentShader);
-            gl.linkProgram(shaderProgram);
-            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-                console.error("Shader link error: " + gl.getProgramInfoLog(shaderProgram));
-                return false;
+        // ===============================
+        // SHADER MANAGER
+        // ===============================
+
+        class ShaderManager {
+            constructor(gl) {
+                this.gl = gl;
+                this.programs = new Map();
+                this.uniforms = new Map();
+                this.attributes = new Map();
             }
-            return true;
-        }
 
-        function createShader(gl, type, source) {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-                console.error("Shader compile error: " + gl.getShaderInfoLog(shader));
-                gl.deleteShader(shader);
+            createShader(type, source) {
+                const shader = this.gl.createShader(type);
+                this.gl.shaderSource(shader, source);
+                this.gl.compileShader(shader);
+
+                if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+                    console.error("Shader compile error:", this.gl.getShaderInfoLog(shader));
+                    this.gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            createProgram(name, vertexSource, fragmentSource) {
+                const vertexShader = this.createShader(this.gl.VERTEX_SHADER, vertexSource);
+                const fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, fragmentSource);
+
+                if (!vertexShader || !fragmentShader) return false;
+
+                const program = this.gl.createProgram();
+                this.gl.attachShader(program, vertexShader);
+                this.gl.attachShader(program, fragmentShader);
+                this.gl.linkProgram(program);
+
+                if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
+                    console.error("Program link error:", this.gl.getProgramInfoLog(program));
+                    return false;
+                }
+
+                this.programs.set(name, program);
+                this.cacheLocations(name, program);
+                return true;
+            }
+
+            cacheLocations(name, program) {
+                const uniforms = {
+                    projectionMatrix: this.gl.getUniformLocation(program, "u_projectionMatrix"),
+                    modelViewMatrix: this.gl.getUniformLocation(program, "u_modelViewMatrix"),
+                    textTexture: this.gl.getUniformLocation(program, "u_textTexture"),
+                    useTexture: this.gl.getUniformLocation(program, "u_useTexture"),
+                    solidColor: this.gl.getUniformLocation(program, "u_solidColor")
+                };
+
+                const attributes = {
+                    vertexPosition: this.gl.getAttribLocation(program, "a_vertexPosition"),
+                    textureCoord: this.gl.getAttribLocation(program, "a_textureCoord")
+                };
+
+                this.uniforms.set(name, uniforms);
+                this.attributes.set(name, attributes);
+            }
+
+            useProgram(name) {
+                const program = this.programs.get(name);
+                if (program) {
+                    this.gl.useProgram(program);
+                    return {
+                        uniforms: this.uniforms.get(name),
+                        attributes: this.attributes.get(name)
+                    };
+                }
                 return null;
             }
-            return shader;
+
+            cleanup() {
+                this.programs.forEach(program => this.gl.deleteProgram(program));
+                this.programs.clear();
+                this.uniforms.clear();
+                this.attributes.clear();
+            }
         }
 
-        function createTextTexture() {
-            console.log('Creating text textures...');
+        // ===============================
+        // TEXTURE MANAGER
+        // ===============================
 
-            // Array of hiragana characters for each object
-            const characters = ['か', 'き', 'く', 'け', 'こ'];
-
-            for (let i = 0; i < characters.length; i++) {
-                // Create a canvas for text rendering
-                const canvas = document.createElement('canvas');
-                canvas.width = 512;
-                canvas.height = 512;
-                const ctx = canvas.getContext('2d');
-
-                // Clear with transparent background
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Set up text properties
-                ctx.font = 'bold 300px serif';
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-
-                // Add text shadow
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-                ctx.shadowBlur = 8;
-                ctx.shadowOffsetX = 4;
-                ctx.shadowOffsetY = 4;
-
-                // Draw the specific hiragana character
-                ctx.fillText(characters[i], canvas.width / 2, canvas.height / 2);
-
-                console.log(`Text ${characters[i]} drawn to canvas`);
-
-                // Create WebGL texture from canvas
-                const texture = gl.createTexture();
-                gl.bindTexture(gl.TEXTURE_2D, texture);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
-
-                // Set texture parameters
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-                // Add to textures array
-                textTextures.push(texture);
+        class TextureManager {
+            constructor(gl) {
+                this.gl = gl;
+                this.textures = new Map();
             }
 
-            console.log('All textures created successfully');
+            createHiraganaTextures(characters = ['か', 'き', 'く', 'け', 'こ']) {
+                const textures = [];
+
+                characters.forEach((char, index) => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 512;
+                    canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+
+                    // Clear background
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    // Text styling
+                    ctx.font = 'bold 300px serif';
+                    ctx.fillStyle = 'white';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    // Text shadow
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                    ctx.shadowBlur = 8;
+                    ctx.shadowOffsetX = 4;
+                    ctx.shadowOffsetY = 4;
+
+                    // Draw character
+                    ctx.fillText(char, canvas.width / 2, canvas.height / 2);
+
+                    // Create WebGL texture
+                    const texture = this.gl.createTexture();
+                    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+                    this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, canvas);
+
+                    // Set texture parameters
+                    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+                    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+                    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
+                    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+
+                    textures.push(texture);
+                    this.textures.set(`hiragana_${index}`, texture);
+                });
+
+                return textures;
+            }
+
+            getTexture(name) {
+                return this.textures.get(name);
+            }
+
+            cleanup() {
+                this.textures.forEach(texture => this.gl.deleteTexture(texture));
+                this.textures.clear();
+            }
         }
 
-        function createTextPlane() {
-            // Create a 3D extruded plane with fully rounded edges (like a rounded rectangle/pill shape)
-            const size = 2.0;
-            const thickness = 0.3;
-            const halfThickness = thickness / 2;
-            const cornerRadius = 0.4; // Larger radius for more rounded appearance
-            const segments = 32; // More segments for smooth curves
+        // ===============================
+        // GEOMETRY MANAGER
+        // ===============================
 
-            const vertices = [];
-            const frontTexCoords = [];
+        class GeometryManager {
+            constructor(gl) {
+                this.gl = gl;
+                this.buffers = new Map();
+                this.geometries = new Map();
+            }
 
-            // Create a rounded rectangle that's more like a "pill" or "stadium" shape
-            function createRoundedPillShape() {
-                const halfW = size / 2, halfH = size / 2;
-                const frontVertices = [];
+            createRoundedPlane(size = 2.0, thickness = 0.3, cornerRadius = 0.4, segments = 32) {
+                const halfThickness = thickness / 2;
+                const vertices = [];
+                const texCoords = [];
+                const halfW = size / 2;
+                const halfH = size / 2;
 
-                // Add center vertex
-                frontVertices.push(0, 0, halfThickness);
-                frontTexCoords.push(0.5, 0.5);
+                // Center vertex
+                vertices.push(0, 0, halfThickness);
+                texCoords.push(0.5, 0.5);
 
-                // Create rounded rectangle by connecting curved sections
-                const totalSegments = segments;
-
-                for (let i = 0; i <= totalSegments; i++) {
-                    const t = (i / totalSegments) * Math.PI * 2; // Full circle parameter
-
+                // Create rounded outline
+                for (let i = 0; i <= segments; i++) {
+                    const t = (i / segments) * Math.PI * 2;
                     let x, y;
 
-                    // Create rounded rectangle shape
                     if (t >= 0 && t < Math.PI / 2) {
-                        // Top-right quadrant
-                        const localT = t / (Math.PI / 2);
                         const cornerX = halfW - cornerRadius;
                         const cornerY = halfH - cornerRadius;
                         x = cornerX + cornerRadius * Math.cos(t);
                         y = cornerY + cornerRadius * Math.sin(t);
-                    }
-                    else if (t >= Math.PI / 2 && t < Math.PI) {
-                        // Top-left quadrant  
-                        const localT = (t - Math.PI / 2) / (Math.PI / 2);
+                    } else if (t >= Math.PI / 2 && t < Math.PI) {
                         const cornerX = -halfW + cornerRadius;
                         const cornerY = halfH - cornerRadius;
                         x = cornerX + cornerRadius * Math.cos(t);
                         y = cornerY + cornerRadius * Math.sin(t);
-                    }
-                    else if (t >= Math.PI && t < 3 * Math.PI / 2) {
-                        // Bottom-left quadrant
-                        const localT = (t - Math.PI) / (Math.PI / 2);
+                    } else if (t >= Math.PI && t < 3 * Math.PI / 2) {
                         const cornerX = -halfW + cornerRadius;
                         const cornerY = -halfH + cornerRadius;
                         x = cornerX + cornerRadius * Math.cos(t);
                         y = cornerY + cornerRadius * Math.sin(t);
-                    }
-                    else {
-                        // Bottom-right quadrant
-                        const localT = (t - 3 * Math.PI / 2) / (Math.PI / 2);
+                    } else {
                         const cornerX = halfW - cornerRadius;
                         const cornerY = -halfH + cornerRadius;
                         x = cornerX + cornerRadius * Math.cos(t);
                         y = cornerY + cornerRadius * Math.sin(t);
                     }
 
-                    frontVertices.push(x, y, halfThickness);
-
-                    // UV mapping
+                    vertices.push(x, y, halfThickness);
                     const u = (x + halfW) / size;
                     const v = 1.0 - (y + halfH) / size;
-                    frontTexCoords.push(u, v);
+                    texCoords.push(u, v);
                 }
 
-                return frontVertices;
+                // Create back face
+                const frontVertexCount = vertices.length / 3;
+                for (let i = 0; i < frontVertexCount; i++) {
+                    vertices.push(vertices[i * 3], vertices[i * 3 + 1], -halfThickness);
+                }
+
+                return this.createGeometryBuffers(vertices, texCoords, segments);
             }
 
-            // Create the rounded shape
-            const frontVertices = createRoundedPillShape();
-            vertices.push(...frontVertices);
+            createGeometryBuffers(vertices, texCoords, segments) {
+                const outlineVertexCount = segments + 1;
 
-            // Create back face
-            const backStartIndex = frontVertices.length / 3;
-            for (let i = 0; i < frontVertices.length; i += 3) {
-                vertices.push(frontVertices[i], frontVertices[i + 1], -halfThickness);
+                // Front face indices
+                const frontIndices = [];
+                for (let i = 1; i <= outlineVertexCount; i++) {
+                    const next = (i % outlineVertexCount) + 1;
+                    frontIndices.push(0, i, next);
+                }
+
+                // Other faces indices
+                const otherIndices = [];
+                const backStartIndex = outlineVertexCount + 1;
+
+                // Back face
+                for (let i = 1; i <= outlineVertexCount; i++) {
+                    const next = (i % outlineVertexCount) + 1;
+                    const backIdx = backStartIndex + i;
+                    const backNextIdx = backStartIndex + next;
+                    otherIndices.push(backStartIndex, backNextIdx, backIdx);
+                }
+
+                // Side faces
+                for (let i = 1; i <= outlineVertexCount; i++) {
+                    const next = (i % outlineVertexCount) + 1;
+                    const backCurrent = backStartIndex + i;
+                    const backNext = backStartIndex + next;
+                    otherIndices.push(i, backCurrent, next);
+                    otherIndices.push(next, backCurrent, backNext);
+                }
+
+                // Wireframe
+                const wireframeVertices = [];
+                for (let i = 1; i <= outlineVertexCount; i++) {
+                    const next = (i % outlineVertexCount) + 1;
+                    const currentIdx = i * 3;
+                    const nextIdx = next * 3;
+
+                    // Front outline
+                    wireframeVertices.push(
+                        vertices[currentIdx], vertices[currentIdx + 1], vertices[currentIdx + 2],
+                        vertices[nextIdx], vertices[nextIdx + 1], vertices[nextIdx + 2]
+                    );
+
+                    // Back outline
+                    wireframeVertices.push(
+                        vertices[currentIdx], vertices[currentIdx + 1], -vertices[currentIdx + 2],
+                        vertices[nextIdx], vertices[nextIdx + 1], -vertices[nextIdx + 2]
+                    );
+                }
+
+                // Connecting edges
+                const connectionStep = Math.floor(outlineVertexCount / 8);
+                for (let i = 1; i <= outlineVertexCount; i += connectionStep) {
+                    const idx = i * 3;
+                    wireframeVertices.push(
+                        vertices[idx], vertices[idx + 1], vertices[idx + 2],
+                        vertices[idx], vertices[idx + 1], -vertices[idx + 2]
+                    );
+                }
+
+                return {
+                    vertices: new Float32Array(vertices),
+                    texCoords: new Float32Array(texCoords),
+                    frontIndices: new Uint16Array(frontIndices),
+                    otherIndices: new Uint16Array(otherIndices),
+                    wireframeVertices: new Float32Array(wireframeVertices)
+                };
             }
 
-            textPlaneBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, textPlaneBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+            createBuffers(name, geometry) {
+                const buffers = {
+                    vertices: this.gl.createBuffer(),
+                    texCoords: this.gl.createBuffer(),
+                    frontIndices: this.gl.createBuffer(),
+                    otherIndices: this.gl.createBuffer(),
+                    wireframe: this.gl.createBuffer()
+                };
 
-            texCoordBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(frontTexCoords), gl.STATIC_DRAW);
+                // Vertex buffer
+                this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffers.vertices);
+                this.gl.bufferData(this.gl.ARRAY_BUFFER, geometry.vertices, this.gl.STATIC_DRAW);
 
-            const outlineVertexCount = frontVertices.length / 3 - 1; // Exclude center
+                // Texture coordinate buffer
+                this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffers.texCoords);
+                this.gl.bufferData(this.gl.ARRAY_BUFFER, geometry.texCoords, this.gl.STATIC_DRAW);
 
-            // Create indices for front face
-            const frontFaceIndices = [];
-            for (let i = 1; i <= outlineVertexCount; i++) {
-                const next = (i % outlineVertexCount) + 1;
-                frontFaceIndices.push(0, i, next);
+                // Front indices
+                this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, buffers.frontIndices);
+                this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, geometry.frontIndices, this.gl.STATIC_DRAW);
+
+                // Other indices
+                this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, buffers.otherIndices);
+                this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, geometry.otherIndices, this.gl.STATIC_DRAW);
+
+                // Wireframe
+                this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffers.wireframe);
+                this.gl.bufferData(this.gl.ARRAY_BUFFER, geometry.wireframeVertices, this.gl.STATIC_DRAW);
+
+                const geometryData = {
+                    buffers,
+                    frontIndexCount: geometry.frontIndices.length,
+                    otherIndexCount: geometry.otherIndices.length,
+                    wireframeVertexCount: geometry.wireframeVertices.length / 3
+                };
+
+                this.buffers.set(name, buffers);
+                this.geometries.set(name, geometryData);
+
+                return geometryData;
             }
 
-            // Create indices for other faces
-            const otherFacesIndices = [];
-
-            // Back face
-            const backCenterIdx = backStartIndex;
-            for (let i = 1; i <= outlineVertexCount; i++) {
-                const next = (i % outlineVertexCount) + 1;
-                const backIdx = backStartIndex + i;
-                const backNextIdx = backStartIndex + next;
-                otherFacesIndices.push(backCenterIdx, backNextIdx, backIdx);
+            getGeometry(name) {
+                return this.geometries.get(name);
             }
 
-            // Side faces
-            for (let i = 1; i <= outlineVertexCount; i++) {
-                const next = (i % outlineVertexCount) + 1;
-                const frontCurrent = i;
-                const frontNext = next;
-                const backCurrent = backStartIndex + i;
-                const backNext = backStartIndex + next;
-
-                otherFacesIndices.push(frontCurrent, backCurrent, frontNext);
-                otherFacesIndices.push(frontNext, backCurrent, backNext);
+            cleanup() {
+                this.buffers.forEach(bufferSet => {
+                    Object.values(bufferSet).forEach(buffer => this.gl.deleteBuffer(buffer));
+                });
+                this.buffers.clear();
+                this.geometries.clear();
             }
-
-            textPlaneIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, textPlaneIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(frontFaceIndices), gl.STATIC_DRAW);
-
-            window.otherFacesIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, window.otherFacesIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(otherFacesIndices), gl.STATIC_DRAW);
-
-            window.frontFaceCount = frontFaceIndices.length;
-            window.otherFacesCount = otherFacesIndices.length;
-
-            // Create wireframe that shows the smooth rounded shape
-            const wireframeVertices = [];
-
-            // Front face outline - smooth continuous curve
-            for (let i = 1; i <= outlineVertexCount; i++) {
-                const next = (i % outlineVertexCount) + 1;
-                const currentIdx = i * 3;
-                const nextIdx = next * 3;
-                wireframeVertices.push(
-                    frontVertices[currentIdx], frontVertices[currentIdx + 1], frontVertices[currentIdx + 2],
-                    frontVertices[nextIdx], frontVertices[nextIdx + 1], frontVertices[nextIdx + 2]
-                );
-            }
-
-            // Back face outline - matching smooth curve
-            for (let i = 1; i <= outlineVertexCount; i++) {
-                const next = (i % outlineVertexCount) + 1;
-                const currentIdx = i * 3;
-                const nextIdx = next * 3;
-                wireframeVertices.push(
-                    frontVertices[currentIdx], frontVertices[currentIdx + 1], -halfThickness,
-                    frontVertices[nextIdx], frontVertices[nextIdx + 1], -halfThickness
-                );
-            }
-
-            // Connecting edges - every 8th vertex to show 3D structure
-            const connectionStep = Math.floor(outlineVertexCount / 8);
-            for (let i = 1; i <= outlineVertexCount; i += connectionStep) {
-                const idx = i * 3;
-                wireframeVertices.push(
-                    frontVertices[idx], frontVertices[idx + 1], halfThickness,
-                    frontVertices[idx], frontVertices[idx + 1], -halfThickness
-                );
-            }
-
-            wireframeBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, wireframeBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(wireframeVertices), gl.STATIC_DRAW);
-
-            window.wireframeCount = wireframeVertices.length / 3;
-
-            console.log('Fully rounded pill-shaped geometry created');
         }
 
-        function initMatrices() {
-            projectionMatrix = mat4.create();
-            updateProjectionMatrix();
-            updateCameraMatrix();
+        // ===============================
+        // CAMERA CONTROLLER
+        // ===============================
+
+        class CameraController {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.rotationX = 0;
+                this.rotationY = 0;
+                this.zoom = 7.0;
+                this.projectionMatrix = Mat4.create();
+                this.viewMatrix = Mat4.create();
+
+                this.updateProjectionMatrix();
+            }
+
+            updateProjectionMatrix() {
+                const aspect = this.canvas.clientWidth / this.canvas.clientHeight;
+                const size = this.zoom;
+                const left = -size * aspect;
+                const right = size * aspect;
+                const bottom = -size;
+                const top = size;
+                const near = -10;
+                const far = 10;
+
+                Mat4.orthogonal(this.projectionMatrix, left, right, bottom, top, near, far);
+            }
+
+            updateViewMatrix() {
+                Mat4.identity(this.viewMatrix);
+                Mat4.rotateX(this.viewMatrix, this.viewMatrix, this.rotationX);
+                Mat4.rotateY(this.viewMatrix, this.viewMatrix, this.rotationY);
+            }
+
+            setRotation(x, y) {
+                this.rotationX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, x));
+                this.rotationY = y;
+                this.updateViewMatrix();
+            }
+
+            setZoom(zoom) {
+                this.zoom = Math.max(0.5, Math.min(10, zoom));
+                this.updateProjectionMatrix();
+            }
+
+            reset() {
+                this.rotationX = 0;
+                this.rotationY = 0;
+                this.zoom = 7.0;
+                this.updateProjectionMatrix();
+                this.updateViewMatrix();
+            }
+
+            handleResize() {
+                this.updateProjectionMatrix();
+            }
         }
 
-        function updateProjectionMatrix() {
-            const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-            const size = zoom; // Orthogonal view size
+        // ===============================
+        // INPUT HANDLER
+        // ===============================
 
-            // Create orthogonal projection manually
-            const left = -size * aspect;
-            const right = size * aspect;
-            const bottom = -size;
-            const top = size;
-            const near = -10;
-            const far = 10;
+        class InputHandler {
+            constructor(canvas, camera) {
+                this.canvas = canvas;
+                this.camera = camera;
+                this.mouseDown = false;
+                this.lastMouseX = null;
+                this.lastMouseY = null;
 
-            // Orthogonal projection matrix
-            projectionMatrix[0] = 2 / (right - left);
-            projectionMatrix[1] = 0;
-            projectionMatrix[2] = 0;
-            projectionMatrix[3] = 0;
+                this.setupEventListeners();
+            }
 
-            projectionMatrix[4] = 0;
-            projectionMatrix[5] = 2 / (top - bottom);
-            projectionMatrix[6] = 0;
-            projectionMatrix[7] = 0;
+            setupEventListeners() {
+                this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+                this.canvas.addEventListener('wheel', this.onWheel.bind(this));
+                this.canvas.addEventListener('auxclick', this.onAuxClick.bind(this));
 
-            projectionMatrix[8] = 0;
-            projectionMatrix[9] = 0;
-            projectionMatrix[10] = -2 / (far - near);
-            projectionMatrix[11] = 0;
+                document.addEventListener('mouseup', this.onMouseUp.bind(this));
+                document.addEventListener('mousemove', this.onMouseMove.bind(this));
+            }
 
-            projectionMatrix[12] = -(right + left) / (right - left);
-            projectionMatrix[13] = -(top + bottom) / (top - bottom);
-            projectionMatrix[14] = -(far + near) / (far - near);
-            projectionMatrix[15] = 1;
-        }
+            onMouseDown(event) {
+                if (event.button === 0) { // Left mouse button
+                    this.mouseDown = true;
+                    this.lastMouseX = event.clientX;
+                    this.lastMouseY = event.clientY;
+                } else if (event.button === 1) { // Middle mouse button
+                    event.preventDefault();
+                    this.camera.reset();
+                }
+            }
 
-        function setupMouseControls() {
-            const canvas = document.getElementById("glCanvas");
+            onMouseUp() {
+                this.mouseDown = false;
+            }
 
-            canvas.onmousedown = (event) => {
-                mouseDown = true;
-                lastMouseX = event.clientX;
-                lastMouseY = event.clientY;
-            };
+            onMouseMove(event) {
+                if (!this.mouseDown) return;
 
-            document.onmouseup = () => {
-                mouseDown = false;
-            };
-
-            document.onmousemove = (event) => {
-                if (!mouseDown) return;
-
-                const newX = event.clientX;
-                const newY = event.clientY;
-                const deltaX = newX - lastMouseX;
-                const deltaY = newY - lastMouseY;
-
-                // Much higher sensitivity for responsive control
+                const deltaX = event.clientX - this.lastMouseX;
+                const deltaY = event.clientY - this.lastMouseY;
                 const sensitivity = 0.01;
-                rotationY += deltaX * sensitivity; // Horizontal mouse = Y rotation
-                rotationX += deltaY * sensitivity; // Vertical mouse = X rotation
 
-                // Keep vertical rotation reasonable but not too limited
-                rotationX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, rotationX));
+                const newRotationY = this.camera.rotationY + deltaX * sensitivity;
+                const newRotationX = this.camera.rotationX + deltaY * sensitivity;
 
-                lastMouseX = newX;
-                lastMouseY = newY;
-            };
+                this.camera.setRotation(newRotationX, newRotationY);
 
-            // Mouse wheel for zoom - adjust orthogonal scale
-            canvas.onwheel = (event) => {
-                event.preventDefault();
-                const zoomSpeed = 0.1;
-                zoom += event.deltaY * zoomSpeed * 0.01;
-                zoom = Math.max(0.5, Math.min(10, zoom)); // Limit zoom range
-                updateProjectionMatrix(); // Update the orthogonal projection
-            };
-
-            // Middle mouse button to reset view
-            canvas.onmousedown = (event) => {
-                if (event.button === 1) { // Middle mouse button
-                    event.preventDefault();
-                    resetView();
-                    return;
-                }
-
-                // Left mouse button for rotation
-                if (event.button === 0) {
-                    mouseDown = true;
-                    lastMouseX = event.clientX;
-                    lastMouseY = event.clientY;
-                }
-            };
-
-            // Also handle auxclick for middle mouse button (more reliable)
-            canvas.onauxclick = (event) => {
-                if (event.button === 1) { // Middle mouse button
-                    event.preventDefault();
-                    resetView();
-                }
-            };
-        }
-
-        function resetView() {
-            // Reset to initial view state
-            rotationX = 0;
-            rotationY = 0;
-            zoom = 7.0;
-            updateProjectionMatrix(); // Update orthogonal projection
-            console.log('View reset to initial state');
-        }
-
-        function updateCameraMatrix() {
-            modelViewMatrix = mat4.create();
-
-            // Object rotation around its center (orthogonal view - no translation needed)
-            mat4.rotateX(modelViewMatrix, modelViewMatrix, rotationX);
-            mat4.rotateY(modelViewMatrix, modelViewMatrix, rotationY);
-        }
-
-        function createSwingMatrix(time, objectIndex) {
-            // Calculate current rotation angle around Y-axis with individual phase offset
-            const phaseOffset = objectIndex * Math.PI / 2.5; // Different phase for each object
-            const currentSwingAngle = swingAmplitudeAngle * Math.sin(swingFrequency * time * 100 + phaseOffset);
-
-            // Create rotation matrix around Y-axis (vertical axis)
-            const swingMatrix = mat4.create();
-            mat4.rotateY(swingMatrix, swingMatrix, currentSwingAngle);
-
-            return swingMatrix;
-        }
-
-        function handleWindowResize() {
-            const canvas = document.getElementById("glCanvas");
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-            updateProjectionMatrix(); // Update orthogonal projection for new aspect ratio
-        }
-
-        function drawScene() {
-            time += 0.01;
-
-            gl.clearColor(0.1, 0.125, 0.176, 1.0);
-            gl.clearDepth(1.0);
-            gl.enable(gl.DEPTH_TEST);
-            gl.depthFunc(gl.LEQUAL);
-            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-            // Enable blending for transparency
-            gl.enable(gl.BLEND);
-            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-            gl.useProgram(shaderProgram);
-
-            // Update base camera matrix
-            updateCameraMatrix();
-
-            // Get uniform and attribute locations
-            const projectionMatrixLocation = gl.getUniformLocation(shaderProgram, "u_projectionMatrix");
-            const modelViewMatrixLocation = gl.getUniformLocation(shaderProgram, "u_modelViewMatrix");
-            const textTextureLocation = gl.getUniformLocation(shaderProgram, "u_textTexture");
-            const useTextureLocation = gl.getUniformLocation(shaderProgram, "u_useTexture");
-            const solidColorLocation = gl.getUniformLocation(shaderProgram, "u_solidColor");
-            const positionAttributeLocation = gl.getAttribLocation(shaderProgram, "a_vertexPosition");
-            const texCoordAttributeLocation = gl.getAttribLocation(shaderProgram, "a_textureCoord");
-
-            // Set projection matrix (same for all objects)
-            gl.uniformMatrix4fv(projectionMatrixLocation, false, projectionMatrix);
-
-            // Draw 5 copies of the object lined up horizontally
-            const spacing = 2.8; // Distance between objects
-            const startOffset = -2 * spacing; // Start position for 5 objects centered
-
-            for (let i = 0; i < 5; i++) {
-                // Create individual transform matrix for each object
-                const objectMatrix = mat4.create();
-
-                // Apply base rotation
-                mat4.multiply(objectMatrix, objectMatrix, modelViewMatrix);
-
-                // Translate to position in line FIRST
-                const xOffset = startOffset + i * spacing;
-                mat4.translate(objectMatrix, objectMatrix, [xOffset, 0, 0]);
-
-                // Then apply individual swing animation around the object's own center
-                const swingMatrix = createSwingMatrix(time, i);
-                mat4.multiply(objectMatrix, objectMatrix, swingMatrix);
-
-                // Set the model-view matrix for this object
-                gl.uniformMatrix4fv(modelViewMatrixLocation, false, objectMatrix);
-
-                // === DRAW FRONT FACE WITH TEXTURE ===
-                gl.uniform1i(useTextureLocation, 1); // Enable texture
-
-                // Bind the specific texture for this object
-                gl.activeTexture(gl.TEXTURE0);
-                gl.bindTexture(gl.TEXTURE_2D, textTextures[i]);
-                gl.uniform1i(textTextureLocation, 0);
-
-                // Bind vertex positions
-                gl.bindBuffer(gl.ARRAY_BUFFER, textPlaneBuffer);
-                gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
-                gl.enableVertexAttribArray(positionAttributeLocation);
-
-                // Bind texture coordinates
-                gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-                gl.vertexAttribPointer(texCoordAttributeLocation, 2, gl.FLOAT, false, 0, 0);
-                gl.enableVertexAttribArray(texCoordAttributeLocation);
-
-                // Draw front face with texture
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, textPlaneIndexBuffer);
-                gl.drawElements(gl.TRIANGLES, window.frontFaceCount, gl.UNSIGNED_SHORT, 0);
-
-                // === DRAW OTHER FACES WITH SOLID COLOR ===
-                gl.uniform1i(useTextureLocation, 0); // Disable texture
-                gl.uniform4f(solidColorLocation, 0.4, 0.4, 0.5, 1.0); // Dark blue-grey color
-
-                // Disable texture coordinate attribute for solid faces
-                gl.disableVertexAttribArray(texCoordAttributeLocation);
-
-                // Draw other faces with solid color
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, window.otherFacesIndexBuffer);
-                gl.drawElements(gl.TRIANGLES, window.otherFacesCount, gl.UNSIGNED_SHORT, 0);
-
-                // === DRAW WIREFRAME OUTLINE ===
-                gl.uniform1i(useTextureLocation, 0); // Disable texture
-                gl.uniform4f(solidColorLocation, 1.0, 1.0, 1.0, 1.0); // White wireframe
-
-                // Disable texture coordinate attribute for wireframe
-                gl.disableVertexAttribArray(texCoordAttributeLocation);
-
-                // Bind wireframe vertices
-                gl.bindBuffer(gl.ARRAY_BUFFER, wireframeBuffer);
-                gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
-                gl.enableVertexAttribArray(positionAttributeLocation);
-
-                // Draw wireframe as lines
-                gl.drawArrays(gl.LINES, 0, window.wireframeCount);
+                this.lastMouseX = event.clientX;
+                this.lastMouseY = event.clientY;
             }
 
-            gl.disable(gl.BLEND);
+            onWheel(event) {
+                event.preventDefault();
+                const zoomSpeed = 0.001;
+                const newZoom = this.camera.zoom + event.deltaY * zoomSpeed;
+                this.camera.setZoom(newZoom);
+            }
 
-            requestAnimationFrame(drawScene);
+            onAuxClick(event) {
+                if (event.button === 1) { // Middle mouse button
+                    event.preventDefault();
+                    this.camera.reset();
+                }
+            }
         }
 
-        function main() {
-            if (!initWebGL()) return;
-            if (!initShaders()) return;
-            createTextTexture();
-            createTextPlane();
-            initMatrices();
-            setupMouseControls();
-            window.addEventListener('resize', handleWindowResize);
-            requestAnimationFrame(drawScene);
+        // ===============================
+        // ANIMATION CONTROLLER
+        // ===============================
+
+        class AnimationController {
+            constructor() {
+                this.time = 0;
+                this.swingAmplitude = Math.PI / 6;
+                this.swingFrequency = 0.03;
+                this.objectMatrices = Array(5).fill().map(() => Mat4.create());
+                this.swingMatrix = Mat4.create();
+            }
+
+            update(deltaTime) {
+                this.time += deltaTime;
+            }
+
+            getObjectMatrix(index, baseMatrix, spacing = 2.8) {
+                const objectMatrix = this.objectMatrices[index];
+                Mat4.copy(objectMatrix, baseMatrix);
+
+                // Position in line
+                const startOffset = -2 * spacing;
+                const xOffset = startOffset + index * spacing;
+                Mat4.translate(objectMatrix, objectMatrix, [xOffset, 0, 0]);
+
+                // Individual swing animation
+                const phaseOffset = index * Math.PI / 2.5;
+                const swingAngle = this.swingAmplitude * Math.sin(this.swingFrequency * this.time * 100 + phaseOffset);
+
+                Mat4.identity(this.swingMatrix);
+                Mat4.rotateY(this.swingMatrix, this.swingMatrix, swingAngle);
+                Mat4.multiply(objectMatrix, objectMatrix, this.swingMatrix);
+
+                return objectMatrix;
+            }
         }
 
-        document.addEventListener('DOMContentLoaded', main);
+        // ===============================
+        // WEBGL RENDERER
+        // ===============================
+
+        class WebGLRenderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.gl = null;
+                this.init();
+            }
+
+            init() {
+                this.gl = this.canvas.getContext("webgl") || this.canvas.getContext("experimental-webgl");
+                if (!this.gl) {
+                    throw new Error("WebGL not supported");
+                }
+
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+                this.gl.enable(this.gl.DEPTH_TEST);
+                this.gl.depthFunc(this.gl.LEQUAL);
+                this.gl.enable(this.gl.BLEND);
+                this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+
+                return true;
+            }
+
+            clear() {
+                this.gl.clearColor(0.1, 0.125, 0.176, 1.0);
+                this.gl.clearDepth(1.0);
+                this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+            }
+
+            handleResize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            bindVertexBuffer(buffer, attributeLocation, size = 3) {
+                this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+                this.gl.vertexAttribPointer(attributeLocation, size, this.gl.FLOAT, false, 0, 0);
+                this.gl.enableVertexAttribArray(attributeLocation);
+            }
+
+            drawElements(indexBuffer, count, mode = this.gl.TRIANGLES) {
+                this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+                this.gl.drawElements(mode, count, this.gl.UNSIGNED_SHORT, 0);
+            }
+
+            drawArrays(count, mode = this.gl.LINES) {
+                this.gl.drawArrays(mode, 0, count);
+            }
+
+            cleanup() {
+                // WebGL context cleanup is handled by browser
+            }
+        }
+
+        // ===============================
+        // MAIN GAME CLASS
+        // ===============================
+
+        class HiraganaGame {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.renderer = new WebGLRenderer(this.canvas);
+                this.gl = this.renderer.gl;
+
+                this.shaderManager = new ShaderManager(this.gl);
+                this.textureManager = new TextureManager(this.gl);
+                this.geometryManager = new GeometryManager(this.gl);
+                this.camera = new CameraController(this.canvas);
+                this.inputHandler = new InputHandler(this.canvas, this.camera);
+                this.animationController = new AnimationController();
+
+                this.characters = ['か', 'き', 'く', 'け', 'こ'];
+                this.running = false;
+
+                this.init();
+            }
+
+            async init() {
+                try {
+                    // Initialize shaders
+                    const vertexSource = document.getElementById("vertex-shader-3d").textContent;
+                    const fragmentSource = document.getElementById("fragment-shader-3d").textContent;
+
+                    if (!this.shaderManager.createProgram("main", vertexSource, fragmentSource)) {
+                        throw new Error("Failed to create shader program");
+                    }
+
+                    // Create textures
+                    this.textures = this.textureManager.createHiraganaTextures(this.characters);
+
+                    // Create geometry
+                    const geometry = this.geometryManager.createRoundedPlane();
+                    this.geometryData = this.geometryManager.createBuffers("plane", geometry);
+
+                    // Setup resize handler
+                    window.addEventListener('resize', this.handleResize.bind(this));
+
+                    console.log("HiraganaGame initialized successfully");
+                    this.start();
+
+                } catch (error) {
+                    console.error("Failed to initialize game:", error);
+                }
+            }
+
+            handleResize() {
+                this.renderer.handleResize();
+                this.camera.handleResize();
+            }
+
+            start() {
+                if (this.running) return;
+                this.running = true;
+                this.lastTime = performance.now();
+                this.render();
+            }
+
+            stop() {
+                this.running = false;
+            }
+
+            render(currentTime = performance.now()) {
+                if (!this.running) return;
+
+                const deltaTime = (currentTime - this.lastTime) * 0.001;
+                this.lastTime = currentTime;
+
+                // Update animations
+                this.animationController.update(deltaTime);
+                this.camera.updateViewMatrix();
+
+                // Clear screen
+                this.renderer.clear();
+
+                // Use shader program
+                const { uniforms, attributes } = this.shaderManager.useProgram("main");
+
+                // Set projection matrix
+                this.gl.uniformMatrix4fv(uniforms.projectionMatrix, false, this.camera.projectionMatrix);
+
+                // Render each hiragana object
+                for (let i = 0; i < this.characters.length; i++) {
+                    const objectMatrix = this.animationController.getObjectMatrix(i, this.camera.viewMatrix);
+                    this.gl.uniformMatrix4fv(uniforms.modelViewMatrix, false, objectMatrix);
+
+                    this.renderObject(i, uniforms, attributes);
+                }
+
+                requestAnimationFrame(this.render.bind(this));
+            }
+
+            renderObject(index, uniforms, attributes) {
+                const { buffers } = this.geometryData;
+
+                // === FRONT FACE WITH TEXTURE ===
+                this.gl.uniform1i(uniforms.useTexture, 1);
+                this.gl.activeTexture(this.gl.TEXTURE0);
+                this.gl.bindTexture(this.gl.TEXTURE_2D, this.textures[index]);
+                this.gl.uniform1i(uniforms.textTexture, 0);
+
+                this.renderer.bindVertexBuffer(buffers.vertices, attributes.vertexPosition, 3);
+                this.renderer.bindVertexBuffer(buffers.texCoords, attributes.textureCoord, 2);
+                this.renderer.drawElements(buffers.frontIndices, this.geometryData.frontIndexCount);
+
+                // === OTHER FACES WITH SOLID COLOR ===
+                this.gl.uniform1i(uniforms.useTexture, 0);
+                this.gl.uniform4f(uniforms.solidColor, 0.4, 0.4, 0.5, 1.0);
+                this.gl.disableVertexAttribArray(attributes.textureCoord);
+
+                this.renderer.drawElements(buffers.otherIndices, this.geometryData.otherIndexCount);
+
+                // === WIREFRAME ===
+                this.gl.uniform4f(uniforms.solidColor, 1.0, 1.0, 1.0, 1.0);
+                this.renderer.bindVertexBuffer(buffers.wireframe, attributes.vertexPosition, 3);
+                this.renderer.drawArrays(this.geometryData.wireframeVertexCount);
+            }
+
+            cleanup() {
+                this.stop();
+                this.shaderManager.cleanup();
+                this.textureManager.cleanup();
+                this.geometryManager.cleanup();
+                this.renderer.cleanup();
+            }
+        }
+
+        // ===============================
+        // INITIALIZATION
+        // ===============================
+
+        let game;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                game = new HiraganaGame('glCanvas');
+            } catch (error) {
+                console.error("Failed to start game:", error);
+                alert("Failed to initialize WebGL game. Please check browser compatibility.");
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (game) {
+                game.cleanup();
+            }
+        });
     </script>
 </body>
 
